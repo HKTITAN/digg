@@ -1,0 +1,29 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# Platform generated (regenerate with `flutter create . --platforms=android,windows`)
+android/.gradle/
+android/local.properties
+android/gradle/
+android/gradlew
+android/gradlew.bat
+android/captures/
+android/app/release/
+android/app/build/
+windows/flutter/ephemeral/
+windows/build/
+
+# OS
+.DS_Store
+Thumbs.db

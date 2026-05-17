@@ -1,0 +1,57 @@
+name: digg
+description: Native Digg client for Android and Windows. Personal, experimental.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.22.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP + parsing
+  http: ^1.2.2
+  html: ^0.15.4
+
+  # Local cache — Hive is fast, key/value, on-disk, encrypted-capable
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  path_provider: ^2.1.4
+
+  # Local notifications (Android + Windows)
+  flutter_local_notifications: ^17.2.3
+  timezone: ^0.9.4
+
+  # Background polling
+  workmanager: ^0.5.2
+
+  # SVG icon rendering
+  flutter_svg: ^2.0.10
+
+  # Misc
+  intl: ^0.19.0
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/
+    - assets/fonts/
+
+flutter_launcher_icons:
+  android: true
+  windows:
+    generate: true
+    image_path: "assets/icon/icon-source.png"
+    icon_size: 256
+  image_path: "assets/icon/icon-source.png"
+  adaptive_icon_background: "#00BA7C"
+  adaptive_icon_foreground: "assets/icon/icon-foreground.png"
