@@ -20,8 +20,10 @@ dependencies:
   hive_flutter: ^1.1.0
   path_provider: ^2.1.4
 
-  # Local notifications (Android + Windows)
-  flutter_local_notifications: ^17.2.3
+  # Local notifications (Android). Pinned to 16.x — 17.x requires core
+  # library desugaring on the Android side which adds Gradle complexity
+  # without buying us API we use.
+  flutter_local_notifications: ^16.3.3
   timezone: ^0.9.4
 
   # SVG icon rendering
