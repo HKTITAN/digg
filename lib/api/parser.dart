@@ -14,18 +14,45 @@ import '../models/models.dart';
 class DiggParser {
   // ========== Flight stream ==========
 
+  /// Pull every `self.__next_f.push([1, "..."])` chunk out of the page and
+  /// concatenate the decoded contents.
+  ///
+  /// We *don't* use a regex here. A regex like `"((?:\\.|[^"\\])*)"` looks
+  /// innocent but Dart's RegExp engine blows its matcher stack on big
+  /// pages (digg's profile HTML is ~370 KB) — and on Windows, where the
+  /// default native stack is much smaller than Android's, it surfaces as
+  /// the `StackOverflowError` ("Stack Overflow") we kept getting in the
+  /// "Couldn't reach digg.com" path. Hand-rolling the scan is faster and
+  /// uses constant stack.
   static String extractFlightText(String html) {
-    final re = RegExp(r'self\.__next_f\.push\(\[1,"((?:\\.|[^"\\])*)"\]\)');
+    const prefix = 'self.__next_f.push([1,"';
     final buf = StringBuffer();
-    for (final m in re.allMatches(html)) {
+    var i = 0;
+    while (true) {
+      final start = html.indexOf(prefix, i);
+      if (start < 0) break;
+      // Walk forward from the opening quote, jumping past `\X` escapes,
+      // until we hit the closing unescaped quote.
+      var p = start + prefix.length;
+      while (p < html.length) {
+        final c = html.codeUnitAt(p);
+        if (c == 0x5C) {            // backslash → skip the escape pair
+          p += 2;
+          continue;
+        }
+        if (c == 0x22) break;       // unescaped quote → end of chunk
+        p++;
+      }
+      if (p >= html.length) break;
+      final raw = html.substring(start + prefix.length, p);
       try {
-        // Decode JSON-string escapes by wrapping in quotes and parsing.
-        final decoded = jsonDecode('"${m.group(1)}"');
+        // Reuse JSON's string decoding (handles \", \\, \n, \uXXXX, …).
+        final decoded = jsonDecode('"$raw"');
         if (decoded is String) buf.write(decoded);
       } catch (_) {
-        // Skip malformed chunks — the other extractors will pick up the
-        // slack.
+        // Malformed chunk — drop it and keep going.
       }
+      i = p + 1;
     }
     return buf.toString();
   }
