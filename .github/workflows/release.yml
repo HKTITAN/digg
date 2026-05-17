@@ -1,0 +1,164 @@
+name: release
+
+# Builds Android APK and Windows EXE for every tag that starts with `v`,
+# then attaches the artifacts to the corresponding GitHub release.
+#
+# Two parallel jobs because Android needs Linux + JDK + Android SDK while
+# Windows needs an MSVC toolchain. Both end by uploading their output to
+# the release named by the tag.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to attach artifacts to (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.27.0'
+  ORG: com.hktitan
+
+jobs:
+  # ---------- Android APK ----------
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold platform folders
+        run: flutter create . --platforms=android --org $ORG --project-name digg
+
+      - name: Restore our pre-staged Android manifest
+        # `flutter create` will have overwritten our manifest with its default.
+        # Re-checkout just that file so notification permissions survive.
+        run: git checkout -- android/app/src/main/AndroidManifest.xml || true
+
+      - run: flutter pub get
+      - run: dart run flutter_launcher_icons || true
+
+      - name: Build APK (release)
+        run: flutter build apk --release --build-name=${GITHUB_REF_NAME#v} --build-number=$GITHUB_RUN_NUMBER
+
+      - name: Rename APK
+        run: |
+          mkdir -p artifacts
+          cp build/app/outputs/flutter-apk/app-release.apk "artifacts/digg-${GITHUB_REF_NAME}-android.apk"
+          ls -la artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: artifacts/*.apk
+
+  # ---------- Windows EXE bundle ----------
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold platform folders
+        run: flutter create . --platforms=windows --org $env:ORG --project-name digg
+        env:
+          ORG: ${{ env.ORG }}
+
+      - run: flutter pub get
+      - run: dart run flutter_launcher_icons
+        continue-on-error: true
+
+      - name: Build Windows (release)
+        run: flutter build windows --release
+
+      - name: Package the Windows bundle
+        # `flutter build windows` outputs the runner EXE + its DLLs to a
+        # folder. We zip the whole folder so users can just unzip and run.
+        run: |
+          $version = $env:GITHUB_REF_NAME
+          $out = "artifacts"
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          $bundle = "build/windows/x64/runner/Release"
+          $zipName = "digg-$version-windows-x64.zip"
+          Compress-Archive -Path "$bundle/*" -DestinationPath "$out/$zipName" -Force
+          Get-ChildItem $out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: artifacts/*.zip
+
+  # ---------- Source zip + release ----------
+  release:
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build source archive
+        run: |
+          mkdir -p artifacts
+          git archive --format=zip -o "artifacts/digg-${GITHUB_REF_NAME}-source.zip" HEAD
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: artifacts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-exe
+          path: artifacts
+
+      - name: List artifacts
+        run: ls -la artifacts
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: false
+          body: |
+            Native Digg client for Android and Windows.
+
+            > ⚠️ Experimental personal project. Use cautiously. Not affiliated with Digg.
+
+            ## Downloads
+
+            - **`digg-${{ github.ref_name }}-android.apk`** — install on Android 7.0+ (sideload, allow installs from unknown sources).
+            - **`digg-${{ github.ref_name }}-windows-x64.zip`** — unzip and run `digg.exe`. Windows 10/11 x64.
+            - **`digg-${{ github.ref_name }}-source.zip`** — full source tree (Flutter required to build from source).
+
+            ## What's in here
+
+            - Trending feed, in-app story reader with engagement sparklines and multi-mode sentiment, profile lookup with Gravity / Vibe / Topic distributions, search across stories / people / repos.
+            - On-disk Hive cache, 7-day TTL, stale-while-revalidate so the app stays usable offline.
+            - Local notifications: Android WorkManager polls every 15 minutes; Windows runs an in-app foreground timer.
+
+            See the [README](https://github.com/HKTITAN/digg#readme) for architecture and the data sources used.
+          files: |
+            artifacts/*.apk
+            artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
