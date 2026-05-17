@@ -35,7 +35,7 @@ class BackgroundPoller {
         _kTaskTag,
         frequency: const Duration(minutes: 15), // Android minimum
         constraints: Constraints(networkType: NetworkType.connected),
-        existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+        existingWorkPolicy: ExistingWorkPolicy.keep,
       );
     } else if (defaultTargetPlatform == TargetPlatform.windows) {
       _desktopTimer ??= Timer.periodic(const Duration(minutes: 5), (_) {

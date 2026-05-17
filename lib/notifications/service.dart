@@ -1,6 +1,9 @@
-// Cross-platform local notifications. Android uses native channels; Windows
-// goes through the Action Center via the Windows toast plugin built into
-// flutter_local_notifications.
+// Cross-platform local notifications.
+//
+// Android uses native channels via flutter_local_notifications. Windows
+// support in flutter_local_notifications 17.x is separate from the main
+// plugin and not wired in here yet — on Windows the service initialises
+// cleanly but show() is a no-op until we bolt on flutter_local_notifications_windows.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show Color;
@@ -17,22 +20,15 @@ class NotificationService {
     if (_ready) return;
 
     const androidInit = AndroidInitializationSettings('@drawable/ic_notification');
-    final init = InitializationSettings(
-      android: androidInit,
-      windows: defaultTargetPlatform == TargetPlatform.windows
-          ? const WindowsInitializationSettings(
-              appName: 'Digg',
-              appUserModelId: 'com.hktitan.digg',
-              guid: 'b1a55c8e-3c2d-4f5a-9e0b-3a6e0c8f1d2e',
-            )
-          : null,
-    );
+    const init = InitializationSettings(android: androidInit);
     await _plugin.initialize(init);
 
     // Android 13+ requires runtime opt-in or the tray gets nothing.
-    final androidImpl = _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    await androidImpl?.requestNotificationsPermission();
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final androidImpl = _plugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      await androidImpl?.requestNotificationsPermission();
+    }
 
     _ready = true;
   }
@@ -42,9 +38,14 @@ class NotificationService {
     required String? topHeadline,
   }) async {
     if (!_ready) await init();
+    // Windows support lives in a separate plugin (flutter_local_notifications_windows)
+    // which we haven't wired in. Skip cleanly on non-Android for now.
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+
     final body = topHeadline != null && topHeadline.isNotEmpty
         ? topHeadline
         : '$newCount new ${newCount == 1 ? "story" : "stories"} on Digg';
+
     await _plugin.show(
       _idForToday(),
       newCount == 1 ? 'New story on Digg' : '$newCount new stories on Digg',
@@ -60,7 +61,6 @@ class NotificationService {
           color: Color(0xFF00BA7C),
           icon: '@drawable/ic_notification',
         ),
-        windows: WindowsNotificationDetails(),
       ),
     );
   }

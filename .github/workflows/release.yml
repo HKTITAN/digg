@@ -21,7 +21,6 @@ permissions:
   contents: write
 
 env:
-  FLUTTER_VERSION: '3.27.0'
   ORG: com.hktitan
 
 jobs:
@@ -38,7 +37,6 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
           cache: true
 
@@ -75,7 +73,6 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: 'stable'
           cache: true
 
