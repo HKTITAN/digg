@@ -24,9 +24,6 @@ dependencies:
   flutter_local_notifications: ^17.2.3
   timezone: ^0.9.4
 
-  # Background polling
-  workmanager: ^0.5.2
-
   # SVG icon rendering
   flutter_svg: ^2.0.10
 
@@ -44,7 +41,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icon/
-    - assets/fonts/
 
 flutter_launcher_icons:
   android: true

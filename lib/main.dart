@@ -1,6 +1,8 @@
 // Digg — native Android + Windows client.
 // Personal project. Reads public Digg pages. Not affiliated with Digg.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'api/client.dart';
@@ -15,15 +17,13 @@ Future<void> main() async {
   final cache = DiggCache();
   await cache.init();
 
-  // Notifications + background polling are best-effort. If a platform lacks
-  // the plumbing (or the user denied permission) the app still works fine.
+  // Notifications + the foreground poller are best-effort. If a platform
+  // lacks the plumbing (or the user denied permission) the app still works.
   await NotificationService.instance.init();
-  unawaited_(BackgroundPoller.instance.start());
+  unawaited(BackgroundPoller.instance.start());
 
   final client = DiggClient(cache: cache);
 
   runApp(DiggApp(client: client, cache: cache));
 }
 
-// `unawaited` from dart:async without importing the whole package symbol set.
-void unawaited_(Future<void> _) {}

@@ -67,7 +67,9 @@ jobs:
 
   # ---------- Windows EXE bundle ----------
   windows:
-    runs-on: windows-latest
+    # Pinned to windows-2022 because windows-latest now points at the
+    # VS2026 image, which Flutter's CMake generator doesn't recognise.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
