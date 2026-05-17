@@ -5,6 +5,7 @@ import '../../api/client.dart';
 import '../../models/models.dart';
 import '../../theme.dart';
 import '../widgets/digg_logo.dart';
+import '../widgets/distribution_chart.dart';
 import 'story_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -187,13 +188,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: const TextStyle(color: DiggColors.fg, fontSize: 14, height: 1.5),
           ),
         ],
-        if (p.vibe != null || p.topic != null) ...[
-          const SizedBox(height: 20),
-          const _SectionLabel('Vibe & Topics'),
-          const SizedBox(height: 8),
-          _chips(p.vibe),
-          if (p.vibe != null && p.topic != null) const SizedBox(height: 8),
-          _chips(p.topic),
+        if (p.vibe != null && p.vibe!.values.any((v) => v > 0)) ...[
+          const SizedBox(height: 24),
+          const _SectionLabel('Vibe'),
+          const SizedBox(height: 10),
+          DistributionChart(data: p.vibe!, color: DiggColors.green),
+        ],
+        if (p.topic != null && p.topic!.values.any((v) => v > 0)) ...[
+          const SizedBox(height: 24),
+          const _SectionLabel('Topics'),
+          const SizedBox(height: 10),
+          DistributionChart(data: p.topic!, color: DiggColors.metricComments),
         ],
         if (_featured.isNotEmpty) ...[
           const SizedBox(height: 20),
@@ -245,41 +250,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _chips(Map<String, double>? m) {
-    if (m == null) return const SizedBox.shrink();
-    final entries = m.entries.where((e) => e.value > 0).toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    if (entries.isEmpty) return const SizedBox.shrink();
-    return Wrap(
-      spacing: 6,
-      runSpacing: 6,
-      children: [
-        for (final e in entries.take(8))
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              border: Border.all(color: DiggColors.border),
-              borderRadius: BorderRadius.circular(9999),
-              color: const Color(0x14000000),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  e.key.replaceAll('_', ' '),
-                  style: const TextStyle(color: DiggColors.fg, fontSize: 13),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '${e.value.toStringAsFixed(e.value >= 10 ? 0 : 1)}%',
-                  style: const TextStyle(color: DiggColors.green, fontSize: 12, fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
 }
 
 class _SectionLabel extends StatelessWidget {

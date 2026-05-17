@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../api/client.dart';
@@ -6,6 +7,40 @@ import '../theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/settings_screen.dart';
+
+/// On desktop, Flutter's default ScrollBehavior excludes mouse from
+/// `dragDevices` — so click-and-drag to scroll silently doesn't work, and
+/// the scrollbar isn't shown by default. This behavior re-enables both,
+/// plus trackpad and stylus. Without this, the Windows build scrolls only
+/// via the mouse wheel and feels broken everywhere else.
+class _DiggScrollBehavior extends MaterialScrollBehavior {
+  const _DiggScrollBehavior();
+  @override
+  Set<PointerDeviceKind> get dragDevices => const {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.unknown,
+      };
+  @override
+  Widget buildScrollbar(BuildContext context, Widget child, ScrollableDetails details) {
+    // Always show a thin scrollbar on desktop so the user has a clear
+    // affordance.
+    switch (Theme.of(context).platform) {
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.macOS:
+        return Scrollbar(
+          controller: details.controller,
+          thumbVisibility: false,
+          child: child,
+        );
+      default:
+        return child;
+    }
+  }
+}
 
 class DiggApp extends StatelessWidget {
   final DiggClient client;
@@ -18,6 +53,7 @@ class DiggApp extends StatelessWidget {
       title: 'Digg',
       debugShowCheckedModeBanner: false,
       theme: buildDiggTheme(),
+      scrollBehavior: const _DiggScrollBehavior(),
       home: _Root(client: client, cache: cache),
     );
   }

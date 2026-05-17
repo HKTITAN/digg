@@ -48,6 +48,50 @@ jobs:
         # Re-checkout just that file so notification permissions survive.
         run: git checkout -- android/app/src/main/AndroidManifest.xml || true
 
+      - name: Enable core library desugaring
+        # flutter_local_notifications 17.x requires Java 8+ APIs that aren't
+        # in older Android levels — desugaring backfills them. We inject
+        # the flag into compileOptions and add the desugar_jdk_libs dep
+        # to whichever gradle file Flutter happened to generate (.kts or
+        # legacy .gradle).
+        run: |
+          set -e
+          GRADLE_KTS=android/app/build.gradle.kts
+          GRADLE_GROOVY=android/app/build.gradle
+          if [ -f "$GRADLE_KTS" ]; then
+            python3 - <<'PY'
+          import re, pathlib
+          path = pathlib.Path("android/app/build.gradle.kts")
+          src = path.read_text()
+          if "isCoreLibraryDesugaringEnabled" not in src:
+              src = re.sub(
+                  r"(compileOptions\s*\{\s*)",
+                  r"\1\n        isCoreLibraryDesugaringEnabled = true",
+                  src, count=1,
+              )
+          if "desugar_jdk_libs" not in src:
+              src += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+          path.write_text(src)
+          PY
+          elif [ -f "$GRADLE_GROOVY" ]; then
+            python3 - <<'PY'
+          import re, pathlib
+          path = pathlib.Path("android/app/build.gradle")
+          src = path.read_text()
+          if "coreLibraryDesugaringEnabled" not in src:
+              src = re.sub(
+                  r"(compileOptions\s*\{\s*)",
+                  r"\1\n        coreLibraryDesugaringEnabled true",
+                  src, count=1,
+              )
+          if "desugar_jdk_libs" not in src:
+              src += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
+          path.write_text(src)
+          PY
+          fi
+          echo "----- patched gradle file -----"
+          cat $GRADLE_KTS 2>/dev/null || cat $GRADLE_GROOVY
+
       - run: flutter pub get
       - run: dart run flutter_launcher_icons || true
 

@@ -146,8 +146,12 @@ class DiggParser {
   // ========== JSON-LD (NewsArticle, structured data) ==========
 
   static Map<String, dynamic>? extractJsonLd(String html) {
+    // Match both quote styles for the `type=` attribute, but keep the
+    // pattern simple — Dart's adjacent-string concatenation around `["']`
+    // produced an invalid regex (FormatException: Unmatched ')'), so we
+    // just OR two literal forms.
     final re = RegExp(
-      r'<script\b[^>]*type=["' "'" r']application\/ld\+json["' "'" r'][^>]*>([\s\S]*?)<\/script>',
+      r'<script\b[^>]*type=(?:"application/ld\+json"|' r"'application/ld\+json'" r')[^>]*>([\s\S]*?)</script>',
       caseSensitive: false,
     );
     Map<String, dynamic>? fallback;
@@ -170,8 +174,13 @@ class DiggParser {
   }
 
   static String? metaContent(String html, String prop) {
+    // digg.com renders `<meta property="og:title" content="...">` with
+    // double quotes only; matching just that is enough and keeps the
+    // regex simple (mixing quote chars in a Dart pattern is what blew
+    // up `Couldn't load this story` with FormatException previously).
+    final esc = RegExp.escape(prop);
     final re = RegExp(
-      '<meta[^>]+property=["' "'" '$prop["' "'" '][^>]+content=["' "'" '([^"' "'" ']+)["' "'" ']',
+      '<meta[^>]+property="$esc"[^>]+content="([^"]+)"',
       caseSensitive: false,
     );
     final m = re.firstMatch(html);
