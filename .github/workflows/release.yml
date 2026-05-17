@@ -64,8 +64,11 @@ jobs:
           path = pathlib.Path("android/app/build.gradle.kts")
           src = path.read_text()
           if "isCoreLibraryDesugaringEnabled" not in src:
+              # Match just `compileOptions {` (no trailing whitespace
+              # gobbling) so the original line break before
+              # `sourceCompatibility` survives.
               src = re.sub(
-                  r"(compileOptions\s*\{\s*)",
+                  r"(compileOptions\s*\{)",
                   r"\1\n        isCoreLibraryDesugaringEnabled = true",
                   src, count=1,
               )
@@ -80,7 +83,7 @@ jobs:
           src = path.read_text()
           if "coreLibraryDesugaringEnabled" not in src:
               src = re.sub(
-                  r"(compileOptions\s*\{\s*)",
+                  r"(compileOptions\s*\{)",
                   r"\1\n        coreLibraryDesugaringEnabled true",
                   src, count=1,
               )
