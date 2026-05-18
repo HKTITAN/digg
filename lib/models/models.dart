@@ -484,6 +484,88 @@ class TrendingStatus {
       );
 }
 
+/// Rich result returned from `DiggClient.getFeed` — not just the story list,
+/// but every section the homepage RSC payload ships (top authors, github
+/// repos, the hacker-news / techmeme strip, yesterday-tops, up-and-coming).
+/// Lives in models.dart instead of client.dart so the parser can produce
+/// one without pulling in the HTTP client (circular import otherwise).
+class FeedResult {
+  final List<Story> stories;
+  final TrendingStatus status;
+  final bool fromCache;
+  final List<AuthorCard> topAuthors;
+  final List<RepoCard> githubRecentStars;
+  final List<Story> upAndComing;
+  final List<Story> yesterdayTop;
+  final List<ExternalLink> hackerNews;
+  final List<ExternalLink> techmeme;
+
+  const FeedResult({
+    required this.stories,
+    required this.status,
+    this.fromCache = false,
+    this.topAuthors = const [],
+    this.githubRecentStars = const [],
+    this.upAndComing = const [],
+    this.yesterdayTop = const [],
+    this.hackerNews = const [],
+    this.techmeme = const [],
+  });
+
+  FeedResult copyWith({bool? fromCache}) => FeedResult(
+        stories: stories,
+        status: status,
+        fromCache: fromCache ?? this.fromCache,
+        topAuthors: topAuthors,
+        githubRecentStars: githubRecentStars,
+        upAndComing: upAndComing,
+        yesterdayTop: yesterdayTop,
+        hackerNews: hackerNews,
+        techmeme: techmeme,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'stories': stories.map((s) => s.toJson()).toList(),
+        'status': status.toJson(),
+        'topAuthors': topAuthors.map((a) => a.toJson()).toList(),
+        'githubRecentStars': githubRecentStars.map((r) => r.toJson()).toList(),
+        'upAndComing': upAndComing.map((s) => s.toJson()).toList(),
+        'yesterdayTop': yesterdayTop.map((s) => s.toJson()).toList(),
+        'hackerNews': hackerNews.map((l) => l.toJson()).toList(),
+        'techmeme': techmeme.map((l) => l.toJson()).toList(),
+      };
+
+  factory FeedResult.fromJson(Map j, {required bool fromCache}) => FeedResult(
+        stories: ((j['stories'] as List?) ?? const [])
+            .map((m) => Story.fromJson(m as Map))
+            .toList(),
+        status: TrendingStatus.fromJson((j['status'] as Map?) ?? const {}),
+        fromCache: fromCache,
+        topAuthors: ((j['topAuthors'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((m) => AuthorCard.fromJson(Map<String, dynamic>.from(m)))
+            .toList(),
+        githubRecentStars: ((j['githubRecentStars'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((m) => RepoCard.fromJson(Map<String, dynamic>.from(m)))
+            .toList(),
+        upAndComing: ((j['upAndComing'] as List?) ?? const [])
+            .map((m) => Story.fromJson(m as Map))
+            .toList(),
+        yesterdayTop: ((j['yesterdayTop'] as List?) ?? const [])
+            .map((m) => Story.fromJson(m as Map))
+            .toList(),
+        hackerNews: ((j['hackerNews'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((m) => ExternalLink.fromJson(Map<String, dynamic>.from(m)))
+            .toList(),
+        techmeme: ((j['techmeme'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((m) => ExternalLink.fromJson(Map<String, dynamic>.from(m)))
+            .toList(),
+      );
+}
+
 // ---- helpers ----
 int? _asInt(dynamic v) {
   if (v == null) return null;
