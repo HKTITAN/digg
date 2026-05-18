@@ -189,14 +189,23 @@ class _StoryScreenState extends State<StoryScreen> {
     return _section(
       'Cluster engagement',
       aside: s.snapshotCount != null ? '${s.snapshotCount} snapshots' : null,
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 1.6,
-        children: tiles,
+      // 2x2 of tiles via two Rows — avoids a nested GridView inside our
+      // ListView (which caused intermittent scroll hangs on Windows) and
+      // gives us full control over the aspect ratio per row.
+      child: Column(
+        children: [
+          Row(children: [
+            Expanded(child: tiles[0]),
+            const SizedBox(width: 8),
+            Expanded(child: tiles[1]),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: tiles[2]),
+            const SizedBox(width: 8),
+            Expanded(child: tiles[3]),
+          ]),
+        ],
       ),
     );
   }

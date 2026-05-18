@@ -63,15 +63,24 @@ jobs:
           import re, pathlib
           path = pathlib.Path("android/app/build.gradle.kts")
           src = path.read_text()
+          # 1. Enable Java 8+ API desugaring (required by flutter_local_notifications 17.x)
           if "isCoreLibraryDesugaringEnabled" not in src:
-              # Match just `compileOptions {` (no trailing whitespace
-              # gobbling) so the original line break before
-              # `sourceCompatibility` survives.
               src = re.sub(
                   r"(compileOptions\s*\{)",
                   r"\1\n        isCoreLibraryDesugaringEnabled = true",
                   src, count=1,
               )
+          # 2. Disable R8 minify + resource shrinking in release. The default
+          #    flutter create config sets minify on, which strips the
+          #    flutter_local_notifications receivers/services and makes the
+          #    release APK crash on launch ("app won't open"). Trading a
+          #    larger APK for a working one.
+          src = re.sub(
+              r'release\s*\{(?:\s*signingConfig[^\n]*\n)?',
+              lambda m: m.group(0) + '            isMinifyEnabled = false\n            isShrinkResources = false\n',
+              src, count=1,
+          ) if "isMinifyEnabled" not in src else src
+          # 3. desugar_jdk_libs dependency
           if "desugar_jdk_libs" not in src:
               src += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
           path.write_text(src)
@@ -87,6 +96,11 @@ jobs:
                   r"\1\n        coreLibraryDesugaringEnabled true",
                   src, count=1,
               )
+          src = re.sub(
+              r'release\s*\{(?:\s*signingConfig[^\n]*\n)?',
+              lambda m: m.group(0) + '            minifyEnabled false\n            shrinkResources false\n',
+              src, count=1,
+          ) if "minifyEnabled false" not in src else src
           if "desugar_jdk_libs" not in src:
               src += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
           path.write_text(src)

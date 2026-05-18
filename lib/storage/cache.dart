@@ -1,65 +1,121 @@
-// On-disk cache built on Hive. Everything we fetch is kept for a week before
-// eviction. The cache is the only persistence layer — the app starts cold
-// against it on every launch, which is what makes "open offline and still
-// see yesterday's stories" work.
+// On-disk cache built on Hive, with a memory-only fallback if the box
+// can't be opened (rare, but it's happened on Android when the app data
+// dir is in a weird state — and a failed cache must never bring down the
+// app, hence the fallback).
+//
+// Entries live for a week before eviction; the API client treats expired
+// entries as missing on fresh fetch but as a fallback when offline
+// (stale-while-revalidate).
 
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class DiggCache {
   static const _boxName = 'digg_cache_v1';
-
-  /// One-week TTL on every entry. Stale-while-revalidate: the API layer
-  /// always tries a fresh fetch first and falls back to whatever's in here.
   static const Duration ttl = Duration(days: 7);
 
-  late Box _box;
+  Box? _box;
+  final Map<String, _Row> _mem = <String, _Row>{};
+  bool _diskAvailable = false;
 
   Future<void> init() async {
-    await Hive.initFlutter();
-    _box = await Hive.openBox(_boxName);
-    await _sweepExpired();
+    try {
+      await Hive.initFlutter();
+      _box = await Hive.openBox(_boxName);
+      _diskAvailable = true;
+      await _sweepExpired();
+    } catch (e, st) {
+      // Fall back to in-memory so the app still works.
+      debugPrint('DiggCache: disk init failed, running memory-only: $e\n$st');
+      _diskAvailable = false;
+    }
   }
 
-  /// Read a cached entry. Returns null when expired unless [allowStale] is
-  /// true (used by the API client as an offline fallback after a network
-  /// failure).
   Future<Map<String, dynamic>?> read(String key, {bool allowStale = false}) async {
-    final row = _box.get(key);
-    if (row is! Map) return null;
-    final exp = row['exp'] as int?;
-    if (exp == null) return null;
-    if (!allowStale && exp < DateTime.now().millisecondsSinceEpoch) return null;
-    final val = row['val'];
+    final row = _readRow(key);
+    if (row == null) return null;
+    if (!allowStale && row.exp < DateTime.now().millisecondsSinceEpoch) return null;
+    final val = row.val;
     return val is Map ? Map<String, dynamic>.from(val) : null;
   }
 
   Future<void> write(String key, Map<String, dynamic> value, {Duration? customTtl}) async {
-    final exp = DateTime.now().add(customTtl ?? ttl).millisecondsSinceEpoch;
-    await _box.put(key, {'exp': exp, 'val': value});
+    final row = _Row(
+      exp: DateTime.now().add(customTtl ?? ttl).millisecondsSinceEpoch,
+      val: value,
+    );
+    _mem[key] = row;
+    if (_diskAvailable && _box != null) {
+      try {
+        await _box!.put(key, {'exp': row.exp, 'val': value});
+      } catch (_) {/* keep memory copy */}
+    }
   }
 
-  Future<void> delete(String key) => _box.delete(key);
+  Future<void> delete(String key) async {
+    _mem.remove(key);
+    if (_diskAvailable && _box != null) {
+      try { await _box!.delete(key); } catch (_) {}
+    }
+  }
 
-  Future<void> clear() => _box.clear();
+  Future<void> clear() async {
+    _mem.clear();
+    if (_diskAvailable && _box != null) {
+      try { await _box!.clear(); } catch (_) {}
+    }
+  }
 
-  /// Total entries currently stored (including stale, before sweep).
-  int get size => _box.length;
+  int get size => _diskAvailable && _box != null ? _box!.length : _mem.length;
 
-  /// Remove every expired entry. Cheap — we run it on launch and after each
-  /// background poll.
+  Future<int> sweep() => _sweepExpired();
+
+  // ---- internals ----
+
+  _Row? _readRow(String key) {
+    final mem = _mem[key];
+    if (mem != null) return mem;
+    if (!_diskAvailable || _box == null) return null;
+    try {
+      final raw = _box!.get(key);
+      if (raw is! Map) return null;
+      final exp = raw['exp'] as int?;
+      if (exp == null) return null;
+      final row = _Row(exp: exp, val: raw['val']);
+      _mem[key] = row;
+      return row;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<int> _sweepExpired() async {
     final now = DateTime.now().millisecondsSinceEpoch;
-    final toDelete = <dynamic>[];
-    for (final k in _box.keys) {
-      final row = _box.get(k);
-      if (row is! Map) continue;
-      final exp = row['exp'] as int?;
-      if (exp == null || exp < now) toDelete.add(k);
+    var dropped = 0;
+    _mem.removeWhere((_, row) {
+      if (row.exp < now) { dropped++; return true; }
+      return false;
+    });
+    if (_diskAvailable && _box != null) {
+      try {
+        final box = _box!;
+        final toDelete = <dynamic>[];
+        for (final k in box.keys) {
+          final r = box.get(k);
+          if (r is! Map) continue;
+          final exp = r['exp'] as int?;
+          if (exp == null || exp < now) toDelete.add(k);
+        }
+        await box.deleteAll(toDelete);
+        dropped += toDelete.length;
+      } catch (_) {}
     }
-    await _box.deleteAll(toDelete);
-    return toDelete.length;
+    return dropped;
   }
+}
 
-  /// Public sweep — invoked after background polls.
-  Future<int> sweep() => _sweepExpired();
+class _Row {
+  final int exp;
+  final dynamic val;
+  _Row({required this.exp, required this.val});
 }
