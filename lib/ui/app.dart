@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../storage/cache.dart';
+import '../sync/sync_manager.dart';
 import '../theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart';
@@ -45,7 +46,8 @@ class _DiggScrollBehavior extends MaterialScrollBehavior {
 class DiggApp extends StatelessWidget {
   final DiggClient client;
   final DiggCache cache;
-  const DiggApp({super.key, required this.client, required this.cache});
+  final DiggSyncManager sync;
+  const DiggApp({super.key, required this.client, required this.cache, required this.sync});
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +56,7 @@ class DiggApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: buildDiggTheme(),
       scrollBehavior: const _DiggScrollBehavior(),
-      home: _Root(client: client, cache: cache),
+      home: _Root(client: client, cache: cache, sync: sync),
     );
   }
 }
@@ -62,7 +64,8 @@ class DiggApp extends StatelessWidget {
 class _Root extends StatefulWidget {
   final DiggClient client;
   final DiggCache cache;
-  const _Root({required this.client, required this.cache});
+  final DiggSyncManager sync;
+  const _Root({required this.client, required this.cache, required this.sync});
 
   @override
   State<_Root> createState() => _RootState();
@@ -74,9 +77,9 @@ class _RootState extends State<_Root> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomeScreen(client: widget.client),
+      HomeScreen(client: widget.client, sync: widget.sync),
       SearchScreen(client: widget.client),
-      SettingsScreen(cache: widget.cache),
+      SettingsScreen(cache: widget.cache, sync: widget.sync),
     ];
     return Scaffold(
       body: IndexedStack(index: _tab, children: pages),

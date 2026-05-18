@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
 import '../../models/models.dart';
+import '../../sync/sync_manager.dart';
 import '../../theme.dart';
 import '../widgets/digg_logo.dart';
 import '../widgets/skeleton.dart';
@@ -10,7 +13,8 @@ import 'story_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final DiggClient client;
-  const HomeScreen({super.key, required this.client});
+  final DiggSyncManager sync;
+  const HomeScreen({super.key, required this.client, required this.sync});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -41,6 +45,11 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
         _error = null;
       });
+      // Kick the sync engine in the background — it'll diff the new feed
+      // against the local index and prefetch only stories that are new or
+      // have new posts. Doesn't block the UI; the user gets the list
+      // immediately and the bodies fill in behind the scenes.
+      unawaited(widget.sync.sync(force: force));
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -92,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     return CustomScrollView(
       slivers: [
-        SliverToBoxAdapter(child: _StatBar(status: _status, fromCache: _fromCache)),
+        SliverToBoxAdapter(child: _StatBar(status: _status, fromCache: _fromCache, sync: widget.sync)),
         SliverList.builder(
           itemCount: _stories.length,
           itemBuilder: (_, i) => StoryCard(
@@ -119,21 +128,35 @@ class _HomeScreenState extends State<HomeScreen> {
 class _StatBar extends StatelessWidget {
   final TrendingStatus? status;
   final bool fromCache;
-  const _StatBar({required this.status, required this.fromCache});
+  final DiggSyncManager sync;
+  const _StatBar({required this.status, required this.fromCache, required this.sync});
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: sync.running,
+      builder: (_, running, __) => ValueListenableBuilder<SyncResult?>(
+        valueListenable: sync.lastResult,
+        builder: (_, result, __) => _build(context, running, result),
+      ),
+    );
+  }
+
+  Widget _build(BuildContext context, bool running, SyncResult? result) {
     final s = status;
     final pieces = <Widget>[];
     if (s?.storiesToday != null) {
       pieces.add(_pill('${s!.storiesToday}', 'stories today'));
     }
-    if (s?.clustersToday != null) {
-      pieces.add(_pill('${s!.clustersToday}', 'clusters'));
+    if (running) {
+      pieces.add(const _SyncingPill());
+    } else if (result != null) {
+      pieces.add(_pill('${result.totalKnown}', 'cached'));
+      if (result.prefetched > 0) {
+        pieces.add(_pill('+${result.prefetched}', 'fetched'));
+      }
     }
-    if (fromCache) {
-      pieces.add(_pill('•', 'offline cache'));
-    }
+    if (fromCache && !running) pieces.add(_pill('•', 'offline'));
     if (pieces.isEmpty) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -159,6 +182,24 @@ class _StatBar extends StatelessWidget {
           label,
           style: const TextStyle(color: DiggColors.fgSoft, fontSize: 12),
         ),
+      ],
+    );
+  }
+}
+
+class _SyncingPill extends StatelessWidget {
+  const _SyncingPill();
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 10, height: 10,
+          child: CircularProgressIndicator(strokeWidth: 1.5, color: DiggColors.green),
+        ),
+        SizedBox(width: 6),
+        Text('Syncing', style: TextStyle(color: DiggColors.fgSoft, fontSize: 12)),
       ],
     );
   }

@@ -1,6 +1,5 @@
-// In-app foreground poller. Checks Digg's trending status every ~5 minutes
-// while the app is open and fires a local notification when the story
-// count goes up since the last check.
+// In-app foreground poller. Runs the sync engine on a 5-minute timer and
+// fires a local notification when the day's story count goes up.
 //
 // Honest scope: this runs only while the Dart isolate is alive. On Android
 // the OS suspends background isolates aggressively; persistent off-screen
@@ -10,23 +9,25 @@
 
 import 'dart:async' show Timer, unawaited;
 
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../api/client.dart';
 import '../notifications/service.dart';
-import '../storage/cache.dart';
+import '../sync/sync_manager.dart';
 
 class BackgroundPoller {
   static final BackgroundPoller instance = BackgroundPoller._();
   BackgroundPoller._();
 
   Timer? _timer;
+  DiggSyncManager? _sync;
   static const _interval = Duration(minutes: 5);
 
   /// Wire up the poller. Safe to call multiple times — re-arming overwrites.
-  Future<void> start() async {
+  Future<void> start({required DiggSyncManager sync}) async {
     _timer?.cancel();
-    // Fire once immediately so the user gets a fresh count on launch.
+    _sync = sync;
+    // Fire once immediately so the user gets fresh content on launch.
     unawaited(_checkOnce());
     _timer = Timer.periodic(_interval, (_) => _checkOnce());
   }
@@ -35,38 +36,31 @@ class BackgroundPoller {
     _timer?.cancel();
     _timer = null;
   }
-}
 
-/// One iteration of the poll. Tracks the last seen story count in Hive and
-/// only fires a notification on a positive delta.
-Future<void> _checkOnce() async {
-  try {
-    final cache = DiggCache();
-    await cache.init();
-    final client = DiggClient(cache: cache);
+  Future<void> _checkOnce() async {
+    final sync = _sync;
+    if (sync == null) return;
+    try {
+      // Snapshot the prior story count before syncing.
+      final box = await Hive.openBox('digg_poller_v1');
+      final lastSeen = (box.get('lastStoriesToday') as int?) ?? 0;
 
-    final status = await client.getTrendingStatus();
-    if (status == null) return;
-    final now = status.storiesToday ?? 0;
-    if (now == 0) return;
+      // Sync — pulls the feed, prefetches new/updated stories.
+      final result = await sync.sync();
+      if (result == null) return;
 
-    final box = await Hive.openBox('digg_poller_v1');
-    final last = (box.get('lastStoriesToday') as int?) ?? 0;
-    if (now > last) {
-      String? topHeadline;
-      try {
-        final feed = await client.getFeed();
-        topHeadline = feed.stories.isNotEmpty ? feed.stories.first.displayTitle : null;
-      } catch (_) {}
-      await NotificationService.instance.showNewStories(
-        newCount: now - last,
-        topHeadline: topHeadline,
-      );
+      // The first sync of the day will surface `newSlugs` for everything
+      // currently trending. We only want to notify on *fresh* additions
+      // detected after the first sync, so we gate on lastSeen != 0.
+      if (lastSeen != 0 && result.newSlugs > 0) {
+        await NotificationService.instance.showNewStories(
+          newCount: result.newSlugs,
+          topHeadline: null,
+        );
+      }
+      await box.put('lastStoriesToday', result.totalKnown);
+    } catch (_) {
+      // Background failures are swallowed — there's no UI to surface them.
     }
-    await box.put('lastStoriesToday', now);
-    await cache.sweep();
-  } catch (_) {
-    // Swallow — there's no UI to surface background failures to.
   }
 }
-
