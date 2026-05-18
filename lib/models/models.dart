@@ -329,6 +329,144 @@ class ProfileCategory {
       ProfileCategory(tag: j['tag'] as String, label: j['label'] as String);
 }
 
+/// One author tile in the homepage `topAuthors` strip or in
+/// `/ai/x/rankings`. The same shape works for both surfaces because both
+/// pages render from the same Digg author projection.
+class AuthorCard {
+  final String username;
+  final String? displayName;
+  final String? avatarUrl;
+  final String? category;
+  final int? rank;
+  final int? peakRank;
+  final int? posLast;
+  final int? delta;
+  final String? gravity;        // pre-formatted display string (e.g. "9.812")
+  final num? composite;         // raw 0..1 score when available
+  final Map<String, dynamic>? scoreComponents;
+
+  const AuthorCard({
+    required this.username,
+    this.displayName,
+    this.avatarUrl,
+    this.category,
+    this.rank,
+    this.peakRank,
+    this.posLast,
+    this.delta,
+    this.gravity,
+    this.composite,
+    this.scoreComponents,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'username': username,
+        'displayName': displayName,
+        'avatarUrl': avatarUrl,
+        'category': category,
+        'rank': rank,
+        'peakRank': peakRank,
+        'posLast': posLast,
+        'delta': delta,
+        'gravity': gravity,
+        'composite': composite,
+        'scoreComponents': scoreComponents,
+      };
+
+  factory AuthorCard.fromJson(Map j) => AuthorCard(
+        username: (j['username'] ?? '') as String,
+        displayName: j['displayName'] as String?,
+        avatarUrl: j['avatarUrl'] as String?,
+        category: j['category'] as String?,
+        rank: _asInt(j['rank']),
+        peakRank: _asInt(j['peakRank']),
+        posLast: _asInt(j['posLast']),
+        delta: _asInt(j['delta']),
+        gravity: j['gravity'] as String?,
+        composite: j['composite'] is num ? j['composite'] as num : null,
+        scoreComponents: j['scoreComponents'] is Map
+            ? Map<String, dynamic>.from(j['scoreComponents'] as Map)
+            : null,
+      );
+}
+
+/// A GitHub repo tile from `/ai/github/*` or from the homepage's
+/// `githubRecentStars` strip.
+class RepoCard {
+  final String fullName;
+  final String? description;
+  final int? stargazersCount;
+  final int? distinctStarrers;
+  final String? mostRecentStarAt;
+  final String? topStarrerLogin;
+  final String? language;
+  final List<AuthorCard> starrers;
+
+  const RepoCard({
+    required this.fullName,
+    this.description,
+    this.stargazersCount,
+    this.distinctStarrers,
+    this.mostRecentStarAt,
+    this.topStarrerLogin,
+    this.language,
+    this.starrers = const [],
+  });
+
+  String get owner => fullName.split('/').first;
+  String get name => fullName.split('/').last;
+  String get url => 'https://github.com/$fullName';
+
+  Map<String, dynamic> toJson() => {
+        'full_name': fullName,
+        'description': description,
+        'stargazers_count': stargazersCount,
+        'distinct_starrers': distinctStarrers,
+        'most_recent_star_at': mostRecentStarAt,
+        'top_starrer_login': topStarrerLogin,
+        'language': language,
+        'starrers': starrers.map((s) => s.toJson()).toList(),
+      };
+
+  factory RepoCard.fromJson(Map j) => RepoCard(
+        fullName: (j['full_name'] ?? j['name'] ?? '') as String,
+        description: j['description'] as String?,
+        stargazersCount: _asInt(j['stargazers_count']),
+        distinctStarrers: _asInt(j['distinct_starrers']),
+        mostRecentStarAt: j['most_recent_star_at'] as String?,
+        topStarrerLogin: j['top_starrer_login'] as String?,
+        language: j['language'] as String?,
+        starrers: ((j['starrers'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((m) => AuthorCard.fromJson(Map<String, dynamic>.from(m)))
+            .toList(),
+      );
+}
+
+/// A link from one of the homepage's external strips (Hacker News, Techmeme).
+class ExternalLink {
+  final String title;
+  final String url;
+  final String? source;
+  final String? at;
+
+  const ExternalLink({required this.title, required this.url, this.source, this.at});
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'url': url,
+        'source': source,
+        'at': at,
+      };
+
+  factory ExternalLink.fromJson(Map j) => ExternalLink(
+        title: (j['title'] ?? '') as String,
+        url: (j['url'] ?? '') as String,
+        source: j['source'] as String?,
+        at: j['at'] as String?,
+      );
+}
+
 class TrendingStatus {
   final int? storiesToday;
   final int? clustersToday;

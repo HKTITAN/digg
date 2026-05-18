@@ -6,6 +6,8 @@ import '../storage/cache.dart';
 import '../sync/sync_manager.dart';
 import '../theme.dart';
 import 'screens/home_screen.dart';
+import 'screens/rankings_screen.dart';
+import 'screens/repos_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/settings_screen.dart';
 
@@ -78,6 +80,8 @@ class _RootState extends State<_Root> {
   Widget build(BuildContext context) {
     final pages = [
       HomeScreen(client: widget.client, sync: widget.sync),
+      RankingsScreen(client: widget.client),
+      ReposScreen(client: widget.client),
       SearchScreen(client: widget.client),
       SettingsScreen(cache: widget.cache, sync: widget.sync),
     ];
@@ -88,8 +92,11 @@ class _RootState extends State<_Root> {
         onDestinationSelected: (i) => setState(() => _tab = i),
         backgroundColor: DiggColors.bg,
         indicatorColor: DiggColors.greenSoft,
+        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.bolt_outlined), selectedIcon: Icon(Icons.bolt), label: 'Trending'),
+          NavigationDestination(icon: Icon(Icons.emoji_events_outlined), selectedIcon: Icon(Icons.emoji_events), label: 'Authors'),
+          NavigationDestination(icon: Icon(Icons.code_outlined), selectedIcon: Icon(Icons.code), label: 'Repos'),
           NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
           NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
         ],

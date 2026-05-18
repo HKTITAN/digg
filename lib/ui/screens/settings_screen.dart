@@ -128,7 +128,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Text('Personal project. Experimental. Use cautiously.',
                     style: TextStyle(color: DiggColors.fgSoft, fontSize: 12)),
                 const SizedBox(height: 8),
-                Text('v0.1.4',
+                Text('v0.1.5',
                     style: TextStyle(color: DiggColors.fgSoft.withValues(alpha: 0.7), fontSize: 11)),
               ],
             ),

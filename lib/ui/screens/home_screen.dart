@@ -1,14 +1,21 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/client.dart';
 import '../../models/models.dart';
 import '../../sync/sync_manager.dart';
 import '../../theme.dart';
+import '../widgets/author_strip.dart';
 import '../widgets/digg_logo.dart';
+import '../widgets/repo_strip.dart';
+import '../widgets/section_header.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/story_card.dart';
+import 'profile_screen.dart';
+import 'rankings_screen.dart';
+import 'repos_screen.dart';
 import 'story_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -21,10 +28,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Story> _stories = const [];
-  TrendingStatus? _status;
+  FeedResult? _feed;
   bool _loading = true;
-  bool _fromCache = false;
   String? _error;
 
   @override
@@ -34,21 +39,17 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _load({bool force = false}) async {
-    if (_stories.isEmpty) setState(() => _loading = true);
+    if (_feed == null) setState(() => _loading = true);
     try {
       final r = await widget.client.getFeed(forceRefresh: force);
       if (!mounted) return;
       setState(() {
-        _stories = r.stories;
-        _status = r.status;
-        _fromCache = r.fromCache;
+        _feed = r;
         _loading = false;
         _error = null;
       });
-      // Kick the sync engine in the background — it'll diff the new feed
-      // against the local index and prefetch only stories that are new or
-      // have new posts. Doesn't block the UI; the user gets the list
-      // immediately and the bodies fill in behind the scenes.
+      // Background prefetch — the sync engine diffs the new feed against
+      // the local index and only fetches what's actually changed.
       unawaited(widget.sync.sync(force: force));
     } catch (e) {
       if (!mounted) return;
@@ -57,6 +58,27 @@ class _HomeScreenState extends State<HomeScreen> {
         _error = e.toString();
       });
     }
+  }
+
+  void _openStory(String slug) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (_, anim, __) => FadeTransition(
+          opacity: anim,
+          child: StoryScreen(client: widget.client, slug: slug),
+        ),
+        transitionDuration: const Duration(milliseconds: 220),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+      ),
+    );
+  }
+
+  void _openProfile(String username) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProfileScreen(client: widget.client, username: username),
+      ),
+    );
   }
 
   @override
@@ -83,9 +105,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _bodyContent() {
-    if (_loading && _stories.isEmpty) {
-      // Skeleton scaffold matches the eventual layout — single column of
-      // story-card-shaped placeholders behind a small stat-bar skeleton.
+    final feed = _feed;
+    if (_loading && feed == null) {
       return const Column(
         children: [
           _StatBarSkeleton(),
@@ -93,34 +114,239 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       );
     }
-    if (_error != null && _stories.isEmpty) {
+    if (_error != null && feed == null) {
       return _ErrorState(message: _error!, onRetry: () => _load(force: true));
     }
-    if (_stories.isEmpty) {
+    if (feed == null || feed.stories.isEmpty) {
       return const _EmptyState();
     }
+    return _RichHomeBody(
+      feed: feed,
+      sync: widget.sync,
+      onStory: _openStory,
+      onAuthor: (a) => _openProfile(a.username),
+      onRepo: (r) => launchUrl(Uri.parse(r.url)),
+      onAllAuthors: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => RankingsScreen(client: widget.client),
+        ),
+      ),
+      onAllRepos: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ReposScreen(client: widget.client),
+        ),
+      ),
+    );
+  }
+}
+
+class _RichHomeBody extends StatelessWidget {
+  final FeedResult feed;
+  final DiggSyncManager sync;
+  final void Function(String slug) onStory;
+  final void Function(AuthorCard) onAuthor;
+  final void Function(RepoCard) onRepo;
+  final VoidCallback onAllAuthors;
+  final VoidCallback onAllRepos;
+
+  const _RichHomeBody({
+    required this.feed,
+    required this.sync,
+    required this.onStory,
+    required this.onAuthor,
+    required this.onRepo,
+    required this.onAllAuthors,
+    required this.onAllRepos,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Interleave story chunks with sidebar strips so the home feels like a
+    // magazine cover rather than a flat list.
+    final stories = feed.stories;
+    final firstChunk = stories.take(6).toList();
+    final secondChunk = stories.skip(6).take(8).toList();
+    final tailChunk = stories.skip(14).toList();
+
     return CustomScrollView(
       slivers: [
-        SliverToBoxAdapter(child: _StatBar(status: _status, fromCache: _fromCache, sync: widget.sync)),
+        SliverToBoxAdapter(child: _StatBar(status: feed.status, fromCache: feed.fromCache, sync: sync)),
+
+        // ----- Trending head -----
+        const SliverToBoxAdapter(
+          child: SectionHeader(title: 'Trending now'),
+        ),
         SliverList.builder(
-          itemCount: _stories.length,
+          itemCount: firstChunk.length,
           itemBuilder: (_, i) => StoryCard(
-            story: _stories[i],
+            story: firstChunk[i],
             index: i,
-            onTap: () => Navigator.of(context).push(
-              PageRouteBuilder(
-                pageBuilder: (_, anim, __) => FadeTransition(
-                  opacity: anim,
-                  child: StoryScreen(client: widget.client, slug: _stories[i].slug),
-                ),
-                transitionDuration: const Duration(milliseconds: 220),
-                reverseTransitionDuration: const Duration(milliseconds: 180),
-              ),
-            ),
+            onTap: () => onStory(firstChunk[i].slug),
           ),
         ),
+
+        // ----- Top authors strip -----
+        if (feed.topAuthors.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: SectionHeader(
+              title: 'Top authors',
+              aside: '${feed.topAuthors.length} ranked',
+              onMore: onAllAuthors,
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: AuthorStrip(
+              authors: feed.topAuthors.take(20).toList(),
+              onTap: onAuthor,
+            ),
+          ),
+        ],
+
+        // ----- Trending body -----
+        if (secondChunk.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          SliverList.builder(
+            itemCount: secondChunk.length,
+            itemBuilder: (_, i) => StoryCard(
+              story: secondChunk[i],
+              index: 6 + i,
+              onTap: () => onStory(secondChunk[i].slug),
+            ),
+          ),
+        ],
+
+        // ----- GitHub recent stars strip -----
+        if (feed.githubRecentStars.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: SectionHeader(
+              title: 'AI is starring',
+              aside: 'GitHub',
+              onMore: onAllRepos,
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: RepoStrip(
+              repos: feed.githubRecentStars.take(20).toList(),
+              onTap: onRepo,
+            ),
+          ),
+        ],
+
+        // ----- Trending tail -----
+        if (tailChunk.isNotEmpty) ...[
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          SliverList.builder(
+            itemCount: tailChunk.length,
+            itemBuilder: (_, i) => StoryCard(
+              story: tailChunk[i],
+              index: 14 + i,
+              onTap: () => onStory(tailChunk[i].slug),
+            ),
+          ),
+        ],
+
+        // ----- Up & coming -----
+        if (feed.upAndComing.isNotEmpty) ...[
+          const SliverToBoxAdapter(
+            child: SectionHeader(title: 'Up & coming', aside: 'gaining velocity'),
+          ),
+          SliverList.builder(
+            itemCount: feed.upAndComing.take(6).length,
+            itemBuilder: (_, i) => StoryCard(
+              story: feed.upAndComing[i],
+              index: i,
+              onTap: () => onStory(feed.upAndComing[i].slug),
+            ),
+          ),
+        ],
+
+        // ----- Yesterday's top -----
+        if (feed.yesterdayTop.isNotEmpty) ...[
+          const SliverToBoxAdapter(
+            child: SectionHeader(title: 'Yesterday', aside: 'top stories'),
+          ),
+          SliverList.builder(
+            itemCount: feed.yesterdayTop.take(6).length,
+            itemBuilder: (_, i) => StoryCard(
+              story: feed.yesterdayTop[i],
+              index: i,
+              onTap: () => onStory(feed.yesterdayTop[i].slug),
+            ),
+          ),
+        ],
+
+        // ----- From the web -----
+        if (feed.hackerNews.isNotEmpty || feed.techmeme.isNotEmpty) ...[
+          const SliverToBoxAdapter(
+            child: SectionHeader(title: 'From the web', aside: 'Hacker News · Techmeme'),
+          ),
+          SliverList.builder(
+            itemCount: feed.hackerNews.length + feed.techmeme.length,
+            itemBuilder: (_, i) {
+              final link = i < feed.hackerNews.length
+                  ? feed.hackerNews[i]
+                  : feed.techmeme[i - feed.hackerNews.length];
+              final source = i < feed.hackerNews.length ? 'HN' : 'TM';
+              return _ExternalLinkRow(link: link, source: source);
+            },
+          ),
+        ],
+
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
       ],
+    );
+  }
+}
+
+class _ExternalLinkRow extends StatelessWidget {
+  final ExternalLink link;
+  final String source;
+  const _ExternalLinkRow({required this.link, required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => launchUrl(Uri.parse(link.url)),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: DiggColors.border.withValues(alpha: 0.5)),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: DiggColors.greenSoft,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                source,
+                style: const TextStyle(
+                  color: DiggColors.green,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                link.title,
+                style: const TextStyle(
+                  color: DiggColors.fg,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  height: 1.35,
+                ),
+              ),
+            ),
+            const Icon(Icons.north_east, size: 14, color: DiggColors.fgSoft),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -150,7 +376,7 @@ class _StatBar extends StatelessWidget {
     }
     if (running) {
       pieces.add(const _SyncingPill());
-    } else if (result != null) {
+    } else if (result != null && result.totalKnown > 0) {
       pieces.add(_pill('${result.totalKnown}', 'cached'));
       if (result.prefetched > 0) {
         pieces.add(_pill('+${result.prefetched}', 'fetched'));
@@ -259,7 +485,6 @@ class _ErrorState extends StatelessWidget {
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
-
   @override
   Widget build(BuildContext context) {
     return ListView(

@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../api/client.dart';
+import '../../models/models.dart';
 import '../../theme.dart';
+import '../widgets/section_header.dart';
+import '../widgets/skeleton.dart';
+import '../widgets/story_card.dart';
 import 'profile_screen.dart';
 import 'story_screen.dart';
 
@@ -21,6 +25,23 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Map<String, dynamic>> _results = const [];
   bool _loading = false;
   Timer? _debounce;
+
+  // Default-state content — surfaced when the query is empty so the tab
+  // doesn't look like a dead end before the user types anything.
+  FeedResult? _browseFeed;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBrowse();
+  }
+
+  Future<void> _loadBrowse() async {
+    try {
+      final r = await widget.client.getFeed();
+      if (mounted) setState(() => _browseFeed = r);
+    } catch (_) {/* feed already shown on home — silent here */}
+  }
 
   void _onQuery(String v) {
     _q = v;
@@ -51,6 +72,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isQuery = _q.trim().length >= 2;
     return Scaffold(
       appBar: AppBar(title: const Text('Search')),
       body: Column(
@@ -58,7 +80,7 @@ class _SearchScreenState extends State<SearchScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: TextField(
-              autofocus: true,
+              autofocus: false,
               onChanged: _onQuery,
               style: const TextStyle(color: DiggColors.fg),
               decoration: const InputDecoration(
@@ -67,54 +89,80 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Row(
-              children: [
-                for (final k in const ['stories', 'people', 'repos'])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: ChoiceChip(
-                      label: Text(k[0].toUpperCase() + k.substring(1)),
-                      selected: _kind == _apiKind(k),
-                      onSelected: (_) {
-                        setState(() => _kind = _apiKind(k));
-                        _runSearch();
-                      },
-                      selectedColor: DiggColors.greenSoft,
-                      backgroundColor: DiggColors.bgSoft,
-                      side: BorderSide(color: _kind == _apiKind(k) ? DiggColors.green : DiggColors.border),
-                      labelStyle: TextStyle(
-                        color: _kind == _apiKind(k) ? DiggColors.green : DiggColors.fg,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
+          if (isQuery) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                children: [
+                  for (final k in const ['stories', 'people', 'repos'])
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text(k[0].toUpperCase() + k.substring(1)),
+                        selected: _kind == _apiKind(k),
+                        onSelected: (_) {
+                          setState(() => _kind = _apiKind(k));
+                          _runSearch();
+                        },
+                        selectedColor: DiggColors.greenSoft,
+                        backgroundColor: DiggColors.bgSoft,
+                        side: BorderSide(
+                            color: _kind == _apiKind(k) ? DiggColors.green : DiggColors.border),
+                        labelStyle: TextStyle(
+                          color: _kind == _apiKind(k) ? DiggColors.green : DiggColors.fg,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                        showCheckmark: false,
                       ),
-                      showCheckmark: false,
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
-          if (_loading) const LinearProgressIndicator(color: DiggColors.green, minHeight: 1),
-          Expanded(
-            child: _q.trim().length < 2
-                ? const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('Start typing to search.',
-                          style: TextStyle(color: DiggColors.fgSoft)),
-                    ),
-                  )
-                : _results.isEmpty && !_loading
-                    ? const Center(child: Text('No matches.', style: TextStyle(color: DiggColors.fgSoft)))
-                    : ListView.separated(
-                        itemCount: _results.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (_, i) => _row(_results[i]),
-                      ),
-          ),
+            if (_loading) const LinearProgressIndicator(color: DiggColors.green, minHeight: 1),
+          ],
+          Expanded(child: isQuery ? _resultsView() : _browseView()),
         ],
       ),
+    );
+  }
+
+  // ----- Browse (no query yet) -----
+  Widget _browseView() {
+    final feed = _browseFeed;
+    if (feed == null) {
+      return const FeedSkeleton(count: 4);
+    }
+    final stories = feed.stories.take(12).toList();
+    return ListView(
+      children: [
+        const SectionHeader(title: 'Trending today', aside: 'tap to read'),
+        for (var i = 0; i < stories.length; i++)
+          StoryCard(
+            story: stories[i],
+            index: i,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => StoryScreen(client: widget.client, slug: stories[i].slug),
+              ),
+            ),
+          ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  // ----- Query results -----
+  Widget _resultsView() {
+    if (_results.isEmpty && !_loading) {
+      return const Center(
+        child: Text('No matches.', style: TextStyle(color: DiggColors.fgSoft)),
+      );
+    }
+    return ListView.separated(
+      itemCount: _results.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (_, i) => _row(_results[i]),
     );
   }
 
@@ -156,7 +204,6 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       );
     }
-    // stories
     final slug = (r['clusterUrlId'] ?? r['shortId'] ?? '') as String;
     return ListTile(
       title: Text((r['title'] ?? r['headline'] ?? '') as String,

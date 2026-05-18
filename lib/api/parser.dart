@@ -483,6 +483,211 @@ class DiggParser {
 
   // ========== Feed ==========
 
+  /// Rich feed — story list plus every sidebar section that the homepage
+  /// already ships (top authors, github recent stars, hacker news / techmeme
+  /// links, yesterday's top, up-and-coming). All extracted from one /ai
+  /// fetch so the home screen never feels empty.
+  static FeedResult parseRichFeed(String html) {
+    final (stories, status) = parseFeed(html);
+    final flight = extractFlightText(html);
+
+    final topAuthors = _authorsAfter(flight, 'topAuthors');
+    final githubRecent = _reposAfter(flight, 'githubRecentStars');
+    final upAndComing = _storiesArrayAfter(flight, 'upAndComingItems');
+    final yesterdayTop = _storiesArrayAfter(flight, 'yesterdayTop');
+
+    final external = objectAfter(flight, 'externalFeeds');
+    final hackerNews = <ExternalLink>[];
+    final techmeme = <ExternalLink>[];
+    if (external != null) {
+      hackerNews.addAll(_externalLinks(external['hackerNews']));
+      techmeme.addAll(_externalLinks(external['techmeme']));
+    }
+
+    return FeedResult(
+      stories: stories,
+      status: status,
+      topAuthors: topAuthors,
+      githubRecentStars: githubRecent,
+      upAndComing: upAndComing,
+      yesterdayTop: yesterdayTop,
+      hackerNews: hackerNews,
+      techmeme: techmeme,
+    );
+  }
+
+  /// `/ai/github/{kind}` — the page is a long list of repo cards.
+  static List<RepoCard> parseGitHubFeed(String html) {
+    final flight = extractFlightText(html);
+    // The page exposes the repo list under one of a few keys depending on
+    // the kind (recent → `repos`, activity → `activityItems`, stars →
+    // `topStarred`, new → `newRepos`). We just look for any array of
+    // objects with `full_name` in it.
+    for (final key in ['repos', 'items', 'activityItems', 'topStarred', 'newRepos']) {
+      final list = _reposAfter(flight, key);
+      if (list.isNotEmpty) return list;
+    }
+    return _allReposInFlight(flight);
+  }
+
+  /// `/ai/x/rankings[?tag=...]` — list of ranked authors.
+  static List<AuthorCard> parseRankings(String html) {
+    final flight = extractFlightText(html);
+    for (final key in ['authors', 'items', 'rankedAuthors', 'topAuthors']) {
+      final list = _authorsAfter(flight, key);
+      if (list.isNotEmpty) return list;
+    }
+    return _allAuthorsInFlight(flight);
+  }
+
+  // ---- helpers shared by the richer parsers ----
+
+  static List<AuthorCard> _authorsAfter(String flight, String key) {
+    final arr = arrayAfter(flight, key);
+    if (arr == null) return const [];
+    return arr
+        .whereType<Map>()
+        .map((m) => _authorFromJson(Map<String, dynamic>.from(m)))
+        .where((a) => a.username.isNotEmpty)
+        .toList();
+  }
+
+  static List<RepoCard> _reposAfter(String flight, String key) {
+    final arr = arrayAfter(flight, key);
+    if (arr == null) return const [];
+    return arr
+        .whereType<Map>()
+        .map((m) => RepoCard.fromJson(Map<String, dynamic>.from(m)))
+        .where((r) => r.fullName.isNotEmpty)
+        .toList();
+  }
+
+  static List<Story> _storiesArrayAfter(String flight, String key) {
+    final arr = arrayAfter(flight, key);
+    if (arr == null) return const [];
+    return arr
+        .whereType<Map>()
+        .map((m) {
+          try {
+            return _storyFromFeedItem(Map<String, dynamic>.from(m));
+          } catch (_) {
+            return null;
+          }
+        })
+        .whereType<Story>()
+        .where((s) => s.slug.isNotEmpty)
+        .toList();
+  }
+
+  static List<ExternalLink> _externalLinks(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((m) {
+          final url = (m['url'] ?? m['link'] ?? '') as String;
+          final title = (m['title'] ?? m['headline'] ?? '') as String;
+          if (url.isEmpty || title.isEmpty) return null;
+          return ExternalLink(
+            title: title,
+            url: url,
+            source: m['source'] as String?,
+            at: (m['at'] ?? m['publishedAt'] ?? m['createdAt']) as String?,
+          );
+        })
+        .whereType<ExternalLink>()
+        .toList();
+  }
+
+  static AuthorCard _authorFromJson(Map<String, dynamic> j) {
+    return AuthorCard(
+      username: ((j['username'] ?? j['handle'] ?? '') as String).trim(),
+      displayName: (j['displayName'] ?? j['display_name'] ?? j['name']) as String?,
+      avatarUrl: (j['avatarUrl'] ?? j['avatar_url'] ?? j['profile_image_url']) as String?,
+      category: (j['category'] ?? j['author_category']) as String?,
+      rank: j['rank'] is int ? j['rank'] as int : null,
+      peakRank: j['peakRank'] is int ? j['peakRank'] as int : null,
+      posLast: j['posLast'] is int ? j['posLast'] as int : null,
+      delta: j['delta'] is int ? j['delta'] as int : null,
+      gravity: j['gravity'] as String?,
+      composite: j['composite'] is num ? j['composite'] as num : null,
+      scoreComponents: j['scoreComponents'] is Map
+          ? Map<String, dynamic>.from(j['scoreComponents'] as Map)
+          : null,
+    );
+  }
+
+  /// Last-resort scan: scrape every `{ ... "username": "..." ... }` shaped
+  /// object from the flight stream. Used when the page's outer key isn't
+  /// in our known list (Digg can rename these between builds).
+  static List<AuthorCard> _allAuthorsInFlight(String flight) {
+    final out = <AuthorCard>[];
+    final seen = <String>{};
+    final re = RegExp(r'"username":"([A-Za-z0-9_]{1,15})"');
+    for (final m in re.allMatches(flight)) {
+      final handle = m.group(1)!;
+      if (seen.contains(handle)) continue;
+      // Climb back to the enclosing object.
+      var depth = 0, i = m.start;
+      while (i > 0) {
+        final c = flight[i];
+        if (c == '}') depth++;
+        else if (c == '{') {
+          if (depth == 0) break;
+          depth--;
+        }
+        i--;
+      }
+      if (flight[i] != '{') continue;
+      final end = _matchClose(flight, i, '{', '}');
+      if (end < 0) continue;
+      try {
+        final obj = jsonDecode(flight.substring(i, end + 1));
+        if (obj is Map && obj.containsKey('username')) {
+          final author = _authorFromJson(Map<String, dynamic>.from(obj));
+          seen.add(handle);
+          if (author.rank != null || author.gravity != null || author.avatarUrl != null) {
+            out.add(author);
+          }
+        }
+      } catch (_) {}
+      if (out.length > 200) break;
+    }
+    out.sort((a, b) => (a.rank ?? 9999).compareTo(b.rank ?? 9999));
+    return out;
+  }
+
+  static List<RepoCard> _allReposInFlight(String flight) {
+    final out = <RepoCard>[];
+    final seen = <String>{};
+    final re = RegExp(r'"full_name":"([^"]+)"');
+    for (final m in re.allMatches(flight)) {
+      final name = m.group(1)!;
+      if (seen.contains(name)) continue;
+      var depth = 0, i = m.start;
+      while (i > 0) {
+        final c = flight[i];
+        if (c == '}') depth++;
+        else if (c == '{') {
+          if (depth == 0) break;
+          depth--;
+        }
+        i--;
+      }
+      if (flight[i] != '{') continue;
+      final end = _matchClose(flight, i, '{', '}');
+      if (end < 0) continue;
+      try {
+        final obj = jsonDecode(flight.substring(i, end + 1));
+        if (obj is Map && obj['full_name'] is String) {
+          seen.add(name);
+          out.add(RepoCard.fromJson(Map<String, dynamic>.from(obj)));
+        }
+      } catch (_) {}
+      if (out.length > 200) break;
+    }
+    return out;
+  }
+
   static (List<Story>, TrendingStatus) parseFeed(String html) {
     final flight = extractFlightText(html);
     final stories = <Story>[];
