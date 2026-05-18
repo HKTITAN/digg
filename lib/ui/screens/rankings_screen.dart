@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../api/client.dart';
 import '../../models/models.dart';
 import '../../theme.dart';
+import '../layout.dart';
 import '../widgets/skeleton.dart';
 import 'profile_screen.dart';
 
@@ -234,20 +235,24 @@ class _AuthorRow extends StatelessWidget {
                       ),
                       if (author.category != null) ...[
                         const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: DiggColors.greenSoft,
-                            borderRadius: BorderRadius.circular(9999),
-                            border: Border.all(color: DiggColors.greenRing),
-                          ),
-                          child: Text(
-                            author.category!.toUpperCase(),
-                            style: const TextStyle(
-                              color: DiggColors.green,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 10,
-                              letterSpacing: 0.3,
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: DiggColors.greenSoft,
+                              borderRadius: BorderRadius.circular(9999),
+                              border: Border.all(color: DiggColors.greenRing),
+                            ),
+                            child: Text(
+                              author.category!.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: DiggColors.green,
+                                fontWeight: FontWeight.w700,
+                                fontSize: isNarrowWidth(context) ? 9 : 10,
+                                letterSpacing: 0.3,
+                              ),
                             ),
                           ),
                         ),

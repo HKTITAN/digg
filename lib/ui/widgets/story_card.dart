@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/models.dart';
 import '../../theme.dart';
+import '../layout.dart';
 
 class StoryCard extends StatelessWidget {
   final Story story;
@@ -12,6 +13,7 @@ class StoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = isCompactWidth(context);
     final meta = [
       '#${story.rank ?? index + 1}',
       if (story.postCount != null) '${story.postCount} posts',
@@ -21,7 +23,7 @@ class StoryCard extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        padding: EdgeInsets.fromLTRB(compact ? 12 : 16, 12, compact ? 12 : 16, 12),
         decoration: const BoxDecoration(
           border: Border(bottom: BorderSide(color: DiggColors.border)),
         ),
@@ -40,12 +42,14 @@ class StoryCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               story.displayTitle,
-              style: const TextStyle(
+              style: TextStyle(
                 color: DiggColors.fg,
-                fontSize: 16,
+                fontSize: compact ? 15 : 16,
                 fontWeight: FontWeight.w700,
                 height: 1.3,
               ),
+              maxLines: compact ? 3 : null,
+              overflow: compact ? TextOverflow.ellipsis : TextOverflow.visible,
             ),
             if (story.displayTldr.isNotEmpty) ...[
               const SizedBox(height: 4),
@@ -62,7 +66,7 @@ class StoryCard extends StatelessWidget {
             ],
             if (story.authors.isNotEmpty) ...[
               const SizedBox(height: 10),
-              _AuthorStack(authors: story.authors.take(5).toList()),
+              _AuthorStack(authors: story.authors.take(5).toList(), compact: compact),
             ],
           ],
         ),
@@ -73,17 +77,21 @@ class StoryCard extends StatelessWidget {
 
 class _AuthorStack extends StatelessWidget {
   final List<StoryAuthor> authors;
-  const _AuthorStack({required this.authors});
+  final bool compact;
+  const _AuthorStack({required this.authors, required this.compact});
 
   @override
   Widget build(BuildContext context) {
+    final overlap = compact ? 14.0 : 16.0;
+    final width = (authors.length * overlap) + 10;
     return SizedBox(
+      width: width,
       height: 22,
       child: Stack(
         children: [
           for (var i = 0; i < authors.length; i++)
             Positioned(
-              left: i * 16.0,
+              left: i * overlap,
               child: Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,

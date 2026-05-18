@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../layout.dart';
 import '../../theme.dart';
 
 class SectionHeader extends StatelessWidget {
@@ -18,42 +19,52 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = isCompactWidth(context);
     return Padding(
       padding: padding,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
+        crossAxisAlignment: compact ? CrossAxisAlignment.start : CrossAxisAlignment.baseline,
+        textBaseline: compact ? null : TextBaseline.alphabetic,
         children: [
-          Text(
-            title.toUpperCase(),
-            style: const TextStyle(
-              color: DiggColors.fg,
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-              letterSpacing: 0.8,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title.toUpperCase(),
+                  style: const TextStyle(
+                    color: DiggColors.fg,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                if (aside != null) ...[
+                  SizedBox(height: compact ? 2 : 0),
+                  Text(
+                    aside!.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: DiggColors.fgSoft,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 10,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-          if (aside != null) ...[
+          if (onMore != null) ...[
             const SizedBox(width: 8),
-            Text(
-              aside!.toUpperCase(),
-              style: const TextStyle(
-                color: DiggColors.fgSoft,
-                fontWeight: FontWeight.w600,
-                fontSize: 10,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ],
-          const Spacer(),
-          if (onMore != null)
             InkWell(
               onTap: onMore,
               borderRadius: BorderRadius.circular(9999),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 child: Row(
-                  children: const [
+                  children: [
                     Text('See all',
                         style: TextStyle(
                           color: DiggColors.green,
@@ -66,6 +77,7 @@ class SectionHeader extends StatelessWidget {
                 ),
               ),
             ),
+          ],
         ],
       ),
     );

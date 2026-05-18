@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/client.dart';
 import '../../models/models.dart';
 import '../../theme.dart';
+import '../layout.dart';
 import '../widgets/section_header.dart';
 import '../widgets/skeleton.dart';
 import '../widgets/story_card.dart';
@@ -92,29 +94,28 @@ class _SearchScreenState extends State<SearchScreen> {
           if (isQuery) ...[
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Row(
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   for (final k in const ['stories', 'people', 'repos'])
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text(k[0].toUpperCase() + k.substring(1)),
-                        selected: _kind == _apiKind(k),
-                        onSelected: (_) {
-                          setState(() => _kind = _apiKind(k));
-                          _runSearch();
-                        },
-                        selectedColor: DiggColors.greenSoft,
-                        backgroundColor: DiggColors.bgSoft,
-                        side: BorderSide(
-                            color: _kind == _apiKind(k) ? DiggColors.green : DiggColors.border),
-                        labelStyle: TextStyle(
-                          color: _kind == _apiKind(k) ? DiggColors.green : DiggColors.fg,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                        showCheckmark: false,
+                    ChoiceChip(
+                      label: Text(k[0].toUpperCase() + k.substring(1)),
+                      selected: _kind == _apiKind(k),
+                      onSelected: (_) {
+                        setState(() => _kind = _apiKind(k));
+                        _runSearch();
+                      },
+                      selectedColor: DiggColors.greenSoft,
+                      backgroundColor: DiggColors.bgSoft,
+                      side: BorderSide(
+                          color: _kind == _apiKind(k) ? DiggColors.green : DiggColors.border),
+                      labelStyle: TextStyle(
+                        color: _kind == _apiKind(k) ? DiggColors.green : DiggColors.fg,
+                        fontWeight: FontWeight.w700,
+                        fontSize: isCompactWidth(context) ? 12 : 13,
                       ),
+                      showCheckmark: false,
                     ),
                 ],
               ),
@@ -193,8 +194,10 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
     if (_kind == 'repos') {
+      final repoName = (r['full_name'] ?? r['name'] ?? '') as String;
+      final repoUrl = (r['html_url'] ?? r['url'] ?? '').toString();
       return ListTile(
-        title: Text((r['full_name'] ?? r['name'] ?? '') as String,
+        title: Text(repoName,
             style: const TextStyle(color: DiggColors.fg, fontWeight: FontWeight.w700)),
         subtitle: Text(
           '⭐ ${_formatCount((r['stargazers_count'] as num?)?.toInt())} · ${r['description'] ?? ''}',
@@ -202,6 +205,11 @@ class _SearchScreenState extends State<SearchScreen> {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(color: DiggColors.fgSoft),
         ),
+        onTap: repoName.isEmpty
+            ? null
+            : () => launchUrl(Uri.parse(
+                  repoUrl.isNotEmpty ? repoUrl : 'https://github.com/$repoName',
+                )),
       );
     }
     final slug = (r['clusterUrlId'] ?? r['shortId'] ?? '') as String;

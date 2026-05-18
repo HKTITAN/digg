@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../api/client.dart';
 import '../../models/models.dart';
 import '../../theme.dart';
+import '../layout.dart';
 import '../widgets/digg_logo.dart';
 import '../widgets/distribution_chart.dart';
 import 'story_screen.dart';
@@ -126,28 +127,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
 
   Widget _onDigg(Profile p) {
+    final compact = isCompactWidth(context);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      padding: EdgeInsets.fromLTRB(compact ? 12 : 16, 12, compact ? 12 : 16, 32),
       children: [
-        Row(
-          children: [
-            const DiggWordmark(height: 20),
-            const Spacer(),
-            if (p.profileUrl != null)
-              FilledButton.tonal(
-                onPressed: () => launchUrl(Uri.parse(p.profileUrl!)),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  foregroundColor: DiggColors.fg,
-                  side: const BorderSide(color: DiggColors.border),
-                  textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                ),
-                child: const Text('View on Digg'),
-              ),
+        if (!compact)
+          Row(
+            children: [
+              const DiggWordmark(height: 20),
+              const Spacer(),
+              if (p.profileUrl != null) _viewOnDiggButton(p.profileUrl!),
+            ],
+          )
+        else ...[
+          const DiggWordmark(height: 20),
+          if (p.profileUrl != null) ...[
+            const SizedBox(height: 10),
+            Align(alignment: Alignment.centerLeft, child: _viewOnDiggButton(p.profileUrl!)),
           ],
-        ),
-        const SizedBox(height: 16),
+        ],
+        const SizedBox(height: 14),
         if (p.gravity != null || p.topFollowers != null || p.followers != null) ...[
           Wrap(
             spacing: 18,
@@ -250,6 +249,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _viewOnDiggButton(String url) {
+    return FilledButton.tonal(
+      onPressed: () => launchUrl(Uri.parse(url)),
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.transparent,
+        foregroundColor: DiggColors.fg,
+        side: const BorderSide(color: DiggColors.border),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      ),
+      child: const Text('View on Digg'),
+    );
+  }
 }
 
 class _SectionLabel extends StatelessWidget {

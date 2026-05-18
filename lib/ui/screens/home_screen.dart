@@ -7,6 +7,7 @@ import '../../api/client.dart';
 import '../../models/models.dart';
 import '../../sync/sync_manager.dart';
 import '../../theme.dart';
+import '../layout.dart';
 import '../widgets/author_strip.dart';
 import '../widgets/digg_logo.dart';
 import '../widgets/repo_strip.dart';
@@ -305,10 +306,11 @@ class _ExternalLinkRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = isCompactWidth(context);
     return InkWell(
       onTap: () => launchUrl(Uri.parse(link.url)),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        padding: EdgeInsets.fromLTRB(compact ? 12 : 16, 12, compact ? 12 : 16, 12),
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(color: DiggColors.border.withValues(alpha: 0.5)),
@@ -335,12 +337,14 @@ class _ExternalLinkRow extends StatelessWidget {
             Expanded(
               child: Text(
                 link.title,
-                style: const TextStyle(
+                style: TextStyle(
                   color: DiggColors.fg,
-                  fontSize: 14,
+                  fontSize: compact ? 13 : 14,
                   fontWeight: FontWeight.w600,
                   height: 1.35,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             const Icon(Icons.north_east, size: 14, color: DiggColors.fgSoft),

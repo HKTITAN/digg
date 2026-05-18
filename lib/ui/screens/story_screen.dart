@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../api/client.dart';
 import '../../models/models.dart';
 import '../../theme.dart';
+import '../layout.dart';
 import '../widgets/sparkline.dart';
 
 class StoryScreen extends StatefulWidget {
@@ -93,8 +94,9 @@ class _StoryScreenState extends State<StoryScreen> {
       );
 
   Widget _content(Story s) {
+    final compact = _isCompact(context);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      padding: EdgeInsets.fromLTRB(compact ? 12 : 16, 12, compact ? 12 : 16, 32),
       children: [
         Text(
           [
@@ -113,9 +115,9 @@ class _StoryScreenState extends State<StoryScreen> {
         const SizedBox(height: 6),
         Text(
           s.displayTitle,
-          style: const TextStyle(
+          style: TextStyle(
             color: DiggColors.fg,
-            fontSize: 22,
+            fontSize: compact ? 20 : 22,
             fontWeight: FontWeight.w800,
             height: 1.25,
           ),
@@ -141,16 +143,16 @@ class _StoryScreenState extends State<StoryScreen> {
           ),
         ],
 
-        _engagement(s),
-        _sentiment(s),
+        _engagement(s, compact: compact),
+        _sentiment(s, compact: compact),
         _caveats(s),
-        _posts(s),
+        _posts(s, compact: compact),
       ],
     );
   }
 
   // ---- Engagement ----
-  Widget _engagement(Story s) {
+  Widget _engagement(Story s, {required bool compact}) {
     final t = s.totals ?? const {};
     final snaps = s.snapshots;
     if (snaps.isEmpty && (t.isEmpty)) return const SizedBox.shrink();
@@ -189,29 +191,41 @@ class _StoryScreenState extends State<StoryScreen> {
     return _section(
       'Cluster engagement',
       aside: s.snapshotCount != null ? '${s.snapshotCount} snapshots' : null,
-      // 2x2 of tiles via two Rows — avoids a nested GridView inside our
-      // ListView (which caused intermittent scroll hangs on Windows) and
-      // gives us full control over the aspect ratio per row.
-      child: Column(
-        children: [
-          Row(children: [
-            Expanded(child: tiles[0]),
-            const SizedBox(width: 8),
-            Expanded(child: tiles[1]),
-          ]),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: tiles[2]),
-            const SizedBox(width: 8),
-            Expanded(child: tiles[3]),
-          ]),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final useOneColumn = compact || constraints.maxWidth < 420;
+          if (useOneColumn) {
+            return Column(
+              children: [
+                for (var i = 0; i < tiles.length; i++) ...[
+                  tiles[i],
+                  if (i != tiles.length - 1) const SizedBox(height: 8),
+                ],
+              ],
+            );
+          }
+          return Column(
+            children: [
+              Row(children: [
+                Expanded(child: tiles[0]),
+                const SizedBox(width: 8),
+                Expanded(child: tiles[1]),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: tiles[2]),
+                const SizedBox(width: 8),
+                Expanded(child: tiles[3]),
+              ]),
+            ],
+          );
+        },
       ),
     );
   }
 
   // ---- Sentiment ----
-  Widget _sentiment(Story s) {
+  Widget _sentiment(Story s, {required bool compact}) {
     final modes = <(String, String)>[
       ('sentimentPercentages', 'Raw'),
       ('storyWeightedPercentages', 'Story-weighted'),
@@ -225,9 +239,10 @@ class _StoryScreenState extends State<StoryScreen> {
 
     final active = modes.any((m) => m.$1 == _sentimentMode) ? _sentimentMode : modes.first.$1;
     final p = _percentages(s, active)!;
-    final pos = (p['positive'] as num?)?.toDouble() ?? 0;
-    final neg = (p['negative'] as num?)?.toDouble() ?? 0;
-    final neu = (100 - pos - neg).clamp(0.0, 100.0);
+    final slices = _sentimentSlices(p);
+    final pos = slices.positive;
+    final neu = slices.neutral;
+    final neg = slices.negative;
 
     return _section(
       'Sentiment',
@@ -261,9 +276,9 @@ class _StoryScreenState extends State<StoryScreen> {
               height: 6,
               child: Row(
                 children: [
-                  Expanded(flex: pos.round(), child: Container(color: DiggColors.sentimentPositive)),
-                  Expanded(flex: neu.round(), child: Container(color: DiggColors.sentimentNeutral)),
-                  Expanded(flex: neg.round(), child: Container(color: DiggColors.sentimentNegative)),
+                  Expanded(flex: pos, child: Container(color: DiggColors.sentimentPositive)),
+                  Expanded(flex: neu, child: Container(color: DiggColors.sentimentNeutral)),
+                  Expanded(flex: neg, child: Container(color: DiggColors.sentimentNegative)),
                 ],
               ),
             ),
@@ -272,9 +287,9 @@ class _StoryScreenState extends State<StoryScreen> {
           Wrap(
             spacing: 16,
             children: [
-              _legend('${pos.round()}%', 'positive'),
-              _legend('${neu.round()}%', 'neutral'),
-              _legend('${neg.round()}%', 'negative'),
+              _legend('$pos%', 'positive'),
+              _legend('$neu%', 'neutral'),
+              _legend('$neg%', 'negative'),
             ],
           ),
         ],
@@ -335,18 +350,18 @@ class _StoryScreenState extends State<StoryScreen> {
   }
 
   // ---- Posts ----
-  Widget _posts(Story s) {
+  Widget _posts(Story s, {required bool compact}) {
     if (s.posts.isEmpty) return const SizedBox.shrink();
     return _section(
       'Posts in this story',
       aside: '${s.posts.length}',
       child: Column(
-        children: [for (final p in s.posts.take(20)) _postCard(p)],
+        children: [for (final p in s.posts.take(20)) _postCard(p, compact: compact)],
       ),
     );
   }
 
-  Widget _postCard(Post p) {
+  Widget _postCard(Post p, {required bool compact}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
@@ -366,7 +381,7 @@ class _StoryScreenState extends State<StoryScreen> {
                     ? NetworkImage(p.authorProfileImageUrl!)
                     : null,
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: compact ? 8 : 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,7 +400,8 @@ class _StoryScreenState extends State<StoryScreen> {
                           ),
                         ),
                         if (p.authorCategory != null)
-                          Container(
+                          Flexible(
+                            child: Container(
                             margin: const EdgeInsets.only(left: 6),
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                             decoration: BoxDecoration(
@@ -395,6 +411,8 @@ class _StoryScreenState extends State<StoryScreen> {
                             ),
                             child: Text(
                               p.authorCategory!.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 color: DiggColors.green,
                                 fontWeight: FontWeight.w700,
@@ -402,6 +420,7 @@ class _StoryScreenState extends State<StoryScreen> {
                                 letterSpacing: 0.3,
                               ),
                             ),
+                          ),
                           ),
                       ],
                     ),
@@ -446,32 +465,71 @@ class _StoryScreenState extends State<StoryScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                label.toUpperCase(),
-                style: const TextStyle(
-                  color: DiggColors.fg,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                  letterSpacing: 0.7,
-                ),
-              ),
-              if (aside != null) ...[
-                const SizedBox(width: 8),
-                Text(
-                  aside.toUpperCase(),
-                  style: const TextStyle(
-                    color: DiggColors.fgSoft,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 10,
-                    letterSpacing: 0.5,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 380;
+              if (!compact) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Text(
+                      label.toUpperCase(),
+                      style: const TextStyle(
+                        color: DiggColors.fg,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        letterSpacing: 0.7,
+                      ),
+                    ),
+                    if (aside != null) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          aside.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: DiggColors.fgSoft,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 10,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label.toUpperCase(),
+                    style: const TextStyle(
+                      color: DiggColors.fg,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      letterSpacing: 0.7,
+                    ),
                   ),
-                ),
-              ],
-            ],
+                  if (aside != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      aside.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: DiggColors.fgSoft,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 10,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ],
+              );
+            },
           ),
           const SizedBox(height: 10),
           child,
@@ -508,12 +566,53 @@ class _MetricTile extends StatelessWidget {
             total == null ? '—' : _formatCount(total!),
             style: const TextStyle(color: DiggColors.fg, fontSize: 20, fontWeight: FontWeight.w800),
           ),
-          const Spacer(),
+          const SizedBox(height: 10),
           if (series.length >= 2) Sparkline(values: series, color: color, height: 24),
         ],
       ),
     );
   }
+}
+
+({int positive, int neutral, int negative}) _sentimentSlices(Map<String, dynamic> percentages) {
+  var pos = (percentages['positive'] as num?)?.toDouble() ?? 0;
+  var neg = (percentages['negative'] as num?)?.toDouble() ?? 0;
+  var neu = (percentages['neutral'] as num?)?.toDouble();
+
+  // Some payloads may return 0..1 ratios; normalize to 0..100.
+  final appearsFractional = pos <= 1.0 && neg <= 1.0 && (neu == null || neu <= 1.0);
+  if (appearsFractional) {
+    pos *= 100;
+    neg *= 100;
+    if (neu != null) neu *= 100;
+  }
+
+  final rawNeu = neu ?? (100 - pos - neg);
+  final clampedPos = pos.clamp(0.0, 100.0);
+  final clampedNeg = neg.clamp(0.0, 100.0);
+  final clampedNeu = rawNeu.clamp(0.0, 100.0);
+
+  var posInt = clampedPos.round();
+  var negInt = clampedNeg.round();
+  var neuInt = clampedNeu.round();
+  var sum = posInt + negInt + neuInt;
+
+  if (sum > 100 && sum > 0) {
+    posInt = ((posInt / sum) * 100).round();
+    negInt = ((negInt / sum) * 100).round();
+    neuInt = ((neuInt / sum) * 100).round();
+    sum = posInt + negInt + neuInt;
+  }
+
+  if (sum != 100) {
+    neuInt += (100 - sum);
+  }
+  neuInt = neuInt.clamp(0, 100);
+  return (
+    positive: posInt.clamp(0, 100),
+    neutral: neuInt.clamp(0, 100),
+    negative: negInt.clamp(0, 100),
+  );
 }
 
 String _formatCount(num n) {

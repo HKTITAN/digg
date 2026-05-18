@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../api/client.dart';
 import '../../models/models.dart';
 import '../../theme.dart';
+import '../layout.dart';
 import '../widgets/skeleton.dart';
 
 /// `/ai/github/{kind}` — recent stars, activity, top-starred, new.
@@ -166,10 +167,11 @@ class _RepoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = isCompactWidth(context);
     return InkWell(
       onTap: () => launchUrl(Uri.parse(repo.url)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        padding: EdgeInsets.fromLTRB(compact ? 12 : 16, 12, compact ? 12 : 16, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -191,9 +193,13 @@ class _RepoRow extends StatelessWidget {
                 ),
                 if (repo.distinctStarrers != null) ...[
                   const SizedBox(width: 10),
-                  Text(
-                    '+${repo.distinctStarrers} AI-2K',
-                    style: const TextStyle(color: DiggColors.green, fontSize: 11, fontWeight: FontWeight.w700),
+                  Flexible(
+                    child: Text(
+                      '+${repo.distinctStarrers} AI-2K',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: DiggColors.green, fontSize: 11, fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ],
               ],
@@ -226,13 +232,21 @@ class _RepoRow extends StatelessWidget {
                 ),
                 if (repo.topStarrerLogin != null) ...[
                   const SizedBox(width: 12),
-                  Text('top: @${repo.topStarrerLogin}',
-                      style: const TextStyle(color: DiggColors.fgSoft, fontSize: 11)),
+                  Expanded(
+                    child: Text('top: @${repo.topStarrerLogin}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: DiggColors.fgSoft, fontSize: 11)),
+                  ),
                 ],
                 if (repo.language != null) ...[
                   const SizedBox(width: 12),
-                  Text(repo.language!,
-                      style: const TextStyle(color: DiggColors.fgSoft, fontSize: 11)),
+                  Flexible(
+                    child: Text(repo.language!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: DiggColors.fgSoft, fontSize: 11)),
+                  ),
                 ],
               ],
             ),
