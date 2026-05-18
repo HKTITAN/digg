@@ -94,7 +94,7 @@ class _StoryScreenState extends State<StoryScreen> {
       );
 
   Widget _content(Story s) {
-    final compact = _isCompact(context);
+    final compact = isCompactWidth(context);
     return ListView(
       padding: EdgeInsets.fromLTRB(compact ? 12 : 16, 12, compact ? 12 : 16, 32),
       children: [
